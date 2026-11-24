@@ -1,0 +1,15 @@
+# Scan outputs, tables and console runs: large, regenerable, copied by hand
+data/
+logs/
+
+# Build and Python caches
+bowstring/_build/
+__pycache__/
+*.pyc
+
+# Third-party paper (public repo)
+till-et-al-2019-*.pdf
+
+# Windows download markers and archives
+*:Zone.Identifier
+*.zip

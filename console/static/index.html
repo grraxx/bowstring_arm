@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bowstring console</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V15"/><path d="M3 18c4 0 6-2 8-6s4-7 9-7"/><circle cx="20" cy="5" r="1.6"/></svg>
+    <span>Bowstring console</span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="replay" aria-selected="true">Replay</button>
+    <button role="tab" data-tab="live" aria-selected="false">Live</button>
+    <button role="tab" data-tab="compare" aria-selected="false">Compare <span class="count" id="compare-count"></span></button>
+    <button role="tab" data-tab="sweeps" aria-selected="false">Sweeps</button>
+  </nav>
+  <div class="topbar-right">
+    <span class="queue-state" id="queue-state">connecting…</span>
+    <button class="icon-btn rail-toggle" id="rail-toggle" title="Show runs" aria-label="Show runs">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- parameters -->
+  <aside class="params" id="params" aria-label="Parameters">
+    <div class="params-head">
+      <h2>Parameters</h2>
+      <button class="text-btn" id="reset-all" title="Reset every parameter to its default">Reset all</button>
+    </div>
+    <div class="params-body" id="params-body"></div>
+    <div class="params-foot">
+      <div class="sweep-box" id="sweep-box" hidden>
+        <div class="sweep-row">
+          <label for="sweep-key">Sweep</label>
+          <select id="sweep-key"></select>
+        </div>
+        <div class="sweep-row three">
+          <label>from <input type="number" id="sweep-from" step="any"></label>
+          <label>to <input type="number" id="sweep-to" step="any"></label>
+          <label>runs <input type="number" id="sweep-n" value="5" min="2" max="20" step="1"></label>
+        </div>
+        <div class="sweep-row">
+          <label class="check"><input type="checkbox" id="sweep-log"> log spacing</label>
+          <span class="sweep-preview" id="sweep-preview"></span>
+        </div>
+      </div>
+      <input type="text" id="run-label" class="label-input" placeholder="Label (optional)" maxlength="80">
+      <div class="foot-actions">
+        <button class="btn secondary" id="sweep-toggle" aria-expanded="false">Sweep…</button>
+        <button class="btn primary" id="run-btn">Run <kbd>Ctrl ↵</kbd></button>
+      </div>
+      <p class="foot-note" id="foot-note"></p>
+    </div>
+  </aside>
+
+  <!-- views -->
+  <main class="views">
+    <section class="view" id="view-replay" data-view="replay">
+      <div class="empty" id="replay-empty">
+        <h3>No run selected</h3>
+        <p>Pick a sample trajectory and its parameters on the left, then press <b>Run</b>.
+        Runs appear in the list on the right as they queue, run and finish; select a finished one to replay it here.</p>
+      </div>
+      <div class="replay" id="replay" hidden>
+        <div class="replay-head">
+          <div class="replay-title">
+            <h2 id="replay-name"></h2>
+            <span class="badge" id="replay-badge"></span>
+          </div>
+          <div class="replay-actions">
+            <button class="text-btn" id="follow-live" hidden>Back to live</button>
+            <button class="text-btn" id="load-config">Load these parameters</button>
+          </div>
+        </div>
+        <dl class="stats" id="replay-stats"></dl>
+        <div class="replay-grid">
+          <div class="arm-pane">
+            <div class="arm-canvas-wrap">
+              <canvas id="arm-canvas"></canvas>
+              <div class="arm-hud" id="arm-hud"></div>
+            </div>
+            <div class="arm-legend">
+              <span><i class="sw dash"></i>reference</span>
+              <span><i class="sw trail"></i>payload path</span>
+              <span><i class="sw est"></i>estimate</span>
+              <span><i class="sw p1"></i><i class="sw p2"></i><i class="sw p3"></i>tendon pairs 1–3, width ∝ tension</span>
+            </div>
+            <div class="transport">
+              <button class="icon-btn" id="play-btn" aria-label="Play">
+                <svg class="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>
+                <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 4v16M17 4v16"/></svg>
+              </button>
+              <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Time">
+              <span class="time" id="time-readout">0.00 s</span>
+              <select id="speed" aria-label="Playback speed">
+                <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+              </select>
+            </div>
+          </div>
+          <div class="plots" id="replay-plots"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-live" data-view="live" hidden>
+      <div class="replay-head">
+        <div class="replay-title">
+          <h2>Live drive</h2>
+          <span class="badge" id="live-badge">stopped</span>
+        </div>
+        <div class="replay-actions">
+          <span class="live-load" id="live-load"></span>
+          <label class="check" title="Only x, y are commanded; the controller picks the least-tension payload angle"><input type="checkbox" id="live-free"> Free orientation</label>
+          <button class="btn primary" id="live-start">Start</button>
+        </div>
+      </div>
+      <p class="live-note" id="live-note">Drive the payload with the keyboard or a gamepad, in real time. The loop uses the
+        parameters on the left on the model plant, and starts holding the payload at the trajectory's
+        centre x, y and angle ψ.</p>
+      <div class="replay-grid">
+        <div class="arm-pane">
+          <div class="arm-canvas-wrap">
+            <canvas id="live-canvas"></canvas>
+            <div class="arm-hud" id="live-hud"></div>
+          </div>
+          <div class="keys" aria-label="Keys">
+            <span class="key-group"><span class="key-label">Move</span>
+              <kbd class="cap" data-cap="up">W ↑</kbd><kbd class="cap" data-cap="left">A ←</kbd><kbd class="cap" data-cap="down">S ↓</kbd><kbd class="cap" data-cap="right">D →</kbd></span>
+            <span class="key-group"><span class="key-label">Turn</span>
+              <kbd class="cap" data-cap="ccw">Q ⟲</kbd><kbd class="cap" data-cap="cw">E ⟳</kbd></span>
+            <span class="key-group"><span class="key-label">Stop</span><kbd class="cap">Esc</kbd></span>
+            <span class="pad-status" id="pad-status">Gamepad: press any button on it to connect</span>
+          </div>
+        </div>
+        <div class="plots" id="live-plots"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-compare" data-view="compare" hidden>
+      <div class="empty" id="compare-empty">
+        <h3>Nothing to compare yet</h3>
+        <p>Tick the box next to two or more finished runs in the list on the right. Their payload paths,
+        errors and summary numbers line up here, with the parameters that differ listed beside each run.</p>
+      </div>
+      <div class="compare" id="compare" hidden>
+        <div class="compare-grid">
+          <div class="arm-pane"><div class="arm-canvas-wrap"><canvas id="cmp-canvas"></canvas></div></div>
+          <div class="plots" id="compare-plots"></div>
+        </div>
+        <div class="table-wrap"><table class="table" id="compare-table"></table></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-sweeps" data-view="sweeps" hidden>
+      <div class="empty" id="sweeps-empty">
+        <h3>No sweeps yet</h3>
+        <p>Open <b>Sweep…</b> under the parameters, choose one parameter and a range, and press <b>Run sweep</b>.
+        Every value runs with the rest of the panel as it is; the result plots a summary number against the parameter.</p>
+      </div>
+      <div class="sweeps" id="sweeps" hidden>
+        <div class="sweeps-head">
+          <label>Sweep <select id="sweep-select"></select></label>
+          <label>Plot <select id="sweep-metric">
+            <option value="err_mean">mean position error</option>
+            <option value="err_max">max position error</option>
+            <option value="err_rms">RMS position error</option>
+            <option value="psi_err_max_deg">max angle error (deg)</option>
+            <option value="est_err_max">max estimate error</option>
+            <option value="T_max">max tension</option>
+            <option value="ctrl_ms_mean">controller time (ms)</option>
+          </select></label>
+        </div>
+        <div class="plots" id="sweep-plots"></div>
+        <div class="table-wrap"><table class="table" id="sweep-table"></table></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- runs -->
+  <aside class="runs" id="runs" aria-label="Runs">
+    <div class="runs-head">
+      <h2>Runs <span class="runs-unit">mean error ×10⁻³</span></h2>
+      <button class="text-btn" id="clear-compare" title="Untick all runs">Clear ticks</button>
+    </div>
+    <ol class="run-list" id="run-list"></ol>
+    <div class="runs-empty" id="runs-empty">
+      <p>No runs yet. Your first run will show its progress here.</p>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
